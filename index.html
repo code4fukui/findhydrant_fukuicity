@@ -1,22 +1,25 @@
 <!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <!-- (c)taisukef CC BY  http://fukuno.jig.jp/ -->
-<title>findhydrant 消火栓を探す - odp</title>
+<title>findhydrant 消火栓を探す - 福井市オープンデータ</title>
 <meta property="og:image" content="ss.jpg">
 <link rel="apple-touch-icon" href="img/icon_hydrant.png">
 <link rel="icon" href="img/icon_hydrant.png">
 <meta name="format-detection" content="telephone=no">
 <script type="module">
-import { querySPARQL } from "./lib/odp.js";
+import { CSV } from "https://js.sabae.cc/CSV.js";
 import { getLanguage } from "./lib/getLanguage.js";
 import { get } from "./lib/get.js";
 import { LeafletGSI } from "https://js.sabae.cc/LeafletGSI.js";
+import { Geo3x3 } from "https://geo3x3.com/Geo3x3.js";
 
 const getLL = function(lat, lng) {
 	return [lat, lng];
 };
 
 //	DEFAULT_ORG = new google.maps.LatLng(40.392834, -3.723986); // madrid
-const DEFAULT_ORG = new getLL(35.943352, 136.188597); // sabae st.
+//const DEFAULT_ORG = new getLL(35.943352, 136.188597); // sabae st.
+const { lat, lng } = Geo3x3.decode("E91387367371883486"); // fukui st.
+const DEFAULT_ORG = new getLL(lat, lng);
 //	DEFAULT_ORG = new google.maps.LatLng(34.834509, 138.177419); // shimada city
 //	DEFAULT_ORG = new google.maps.LatLng(35.691180, 139.701038); // shinjuku st. east
 
@@ -155,61 +158,69 @@ const clearMarkers = function() {
 	}
 };
 
-const loadRefuge = function(ll, funcnext) {
+let cacheddata = null;
+const fetchRefuge = async () => {
+	if (cacheddata) return cacheddata;
+	//		"select ?s ?name ?nameen ?lat ?lng ?classified ?graph ?address ?incharge ?diameter {\n" + 
+	// fire_hydrants,種別,管轄署所,住所,緯度,経度,口径,備考
+	const data = await CSV.fetchJSON("fire_hydrants.csv");
+	const map = {
+		fire_hydrants: "name",
+		緯度: "lat",
+		経度: "lng",
+		種別: "classified",
+		住所: "address",
+		口径: "diameter",
+		備考: "note",
+	};
+	const res = data.map(i => {
+		const o = {};
+		for (const name in i) {
+			const name2 = map[name];
+			if (name2) {
+				o[name2] = i[name];
+			}
+		}
+		o.s = "http://linkdata.org/work/rdf1s9409i";
+		return o;
+	});
+	console.log(res);
+	return res;
+};
+
+const loadRefuge = async (ll) => {
 	clearMarkers();
 
-	const dll = 0.01;
+	const items0 = await fetchRefuge();
+	const items1 = items0.filter(i => {
+		if (i.lat < 0) {
+			console.log("ERROR DATA", i);
+			return false;
+		}
+		return true;
+	});
+	const dlat = 0.01 / 2;
+	const dlng = 0.02 / 2;
 	const lat = ll[0];
 	const lng = ll[1];
-	const latmin = lat - dll;
-	const latmax = lat + dll;
-	const lngmin = lng - dll;
-	const lngmax = lng + dll;
-	
-	const q =
-		"prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n" +
-		"prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n" +
-		"prefix geo: <http://www.w3.org/2003/01/geo/wgs84_pos#>\n" +
-		"prefix jrrk: <http://purl.org/jrrk#>\n" +
-		"prefix odp: <http://odp.jig.jp/odp/1.0#>\n" +
-		"select ?s ?name ?nameen ?lat ?lng ?classified ?graph ?address ?incharge ?diameter {\n" + 
-			"graph ?graph {\n" + 
-				"?s rdf:type <" + TYPE + ">;\n" +
-				"rdfs:label ?name;\n" +
-				"odp:classified ?classified;\n" + 
-				"geo:lat ?lat;\n" +
-				"geo:long ?lng.\n" +
-			"optional { ?s rdfs:label ?nameen. filter(lang(?nameen) = 'en') }\n" +
-				"optional { ?s jrrk:departmentInCharge ?incharge. }\n" + 
-				"optional { ?s jrrk:diameter ?diameter. }\n" + 
-				"optional { ?s jrrk:address ?address. }\n" +
-
-		//		"filter(?lat < " + latmax + " && ?lat > " + latmin + " && ?lng < " + lngmax + " && ?lng > " + lngmin + ")\n" +
-			"filter(lang(?name) = 'ja')\n" +
-			"}\n" +
-		"}";
-//	prompt(q);
-	querySPARQL(q, function(data) {
-//		dump(data);
-		const items = data.results.bindings;
-//		alert(items.length); // 全データ3894 全種データ集まっている2568 2016.12.9
-		
-		bounds.length = 0;
-		for (let i = 0; i < items.length; i++) {
-			const it = items[i];
-			const d = {};
-			d.type = TYPE;
-			for (const n in it) {
-				d[n] = it[n].value;
-			}
-			makeMarkerItem(d);
-		}
-		if (data.length > 0) {
-			map.fitBounds(L.latLngBounds(bounds));
-		}
-		
-		funcnext();
+	const latmin = lat - dlat;
+	const latmax = lat + dlat;
+	const lngmin = lng - dlng;
+	const lngmax = lng + dlng;
+	const items = items1.filter(i => {
+		return i.lat >= latmin && i.lat <= latmax && i.lng >= lngmin && i.lng <= lngmax;
 	});
+	console.log(items0.length, "->", items1.length, "->", items.length);
+	
+	bounds.length = 0;
+	items.forEach(i => {
+		i.type = TYPE;
+		i.graph = "";
+		makeMarkerItem(i);
+	});
+	if (items.length > 0) {
+		map.fitBounds(L.latLngBounds(bounds));
+	}
 };
 
 const getNearPosition = function(lat, lng) {
@@ -284,7 +295,7 @@ const getName = function(data) {
 };
 const getContent = function(data) {
 	const pos = data.pos;
-	const mapurl = "http://maps.google.co.jp/maps?ll=" + pos[0] + "," + pos[1];
+	const mapurl = "https://maps.google.co.jp/maps?ll=" + pos[0] + "," + pos[1];
 	const s = [];
 	s.push("<div id='data'>");
 	
@@ -312,8 +323,10 @@ const getContent = function(data) {
 		s.push("担当課：" + decodeURIComponent(data.incharge) + "<br>");
 	if (data.diameter)
 		s.push("直径：" + decodeURIComponent(data.diameter) + "mm<br>");
+	if (data.note)
+		s.push("備考：" + decodeURIComponent(data.note) + "mm<br>");
 	if (data.s)
-		s.push("<a href='" + data.s + "' target=_blank>DATA on odp</a><br>");
+		s.push("出展:" + "<a href='" + data.s + "' target=_blank>" + data.s + "</a><br>");
 //	s.push("DATA <a href='" + data.url + "' target=_blank>" + data.url + "</a><br>");
 //	debug(data.graph);
 	if (data.graph.startsWith("http://odp.jig.jp/rdf/jp/fukui/sabae/")) {
@@ -379,7 +392,7 @@ const setPosition = function(ll, accuracy) {
 	
 	currentpos = ll;
 	
-	loadRefuge(ll, function() {
+	loadRefuge(ll).then(function() {
 		findNear();
 	});
 }
@@ -511,16 +524,16 @@ body {
 <a x-lang="pt">Português</a>,
 <a x-lang="de">Deutsch</a>,
 <a x-lang="ca">català</a>,
-<a x-lang="fa">فارسى‎</a>,
+<a x-lang="fa">فارسى</a>,
 <a x-lang="ko">한국어</a>,
 <a x-lang="zh">中国語</a>,
 <a x-lang="ja">日本語</a>
 </div>
 
 <div class="src">
-APP: <a href=http://creativecommons.org/licenses/by/4.0/ target=_blank>CC BY</a> <a href=http://fukuno.jig.jp/1494 target=_blank>Taisuke Fukuno / Create Everyday</a><br>
-SPARQL: <a href=http://sparql.odp.jig.jp/ target=_blank>odp</a> (代表データ <a href=https://ckan.odp.jig.jp/dataset/jp-fukui-sabae-200-odp>消火栓(福井県鯖江市) - データセット - オープンデータプラットフォーム | データカタログサイト</a>)<br>
-<a href=https://github.com/code4fukui/findhydrant/>ソースコード on GitHub</a><br>
+APP: <a href=https://creativecommons.org/licenses/by/4.0/ target=_blank>CC BY</a> <a href=https://fukuno.jig.jp/1494 target=_blank>Taisuke Fukuno / Create Everyday</a><br>
+DATA: <a href=http://linkdata.org/work/rdf1s9409i target=_blank>消防水利施設一覧｜オープンデータ共有＆ダウンロード｜LinkData</a><br>
+<a href=https://github.com/code4fukui/findhydrant_fukuicity/>ソースコード on GitHub</a> (forked <a href=https://github.com/code4fukui/findhydrant>findhydrant</a>)<br>
 要望はこちら <a href=https://github.com/code4fukui/findhydrant/issues>Issues on GitHub</a><br>
 fork歓迎、プルリクエストもお気軽に！<br>
 </div>
