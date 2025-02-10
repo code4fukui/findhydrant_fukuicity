@@ -11,6 +11,7 @@ import { getLanguage } from "./lib/getLanguage.js";
 import { get } from "./lib/get.js";
 import { LeafletGSI } from "https://js.sabae.cc/LeafletGSI.js";
 import { Geo3x3 } from "https://geo3x3.com/Geo3x3.js";
+import { ArrayUtil } from "https://js.sabae.cc/ArrayUtil.js";
 
 const allflg = new URL(document.location).searchParams.get("all") === "";
 
@@ -43,6 +44,13 @@ http://fukuno.jig.jp/app/odp/datalist.html
 const TYPE = "http://purl.org/jrrk#Hydrant";
 
 const getIconHydrant = function(data) {
+	// ['公設消火栓', '公設防火水槽', '河川', 'その他', 'プール', '受水槽', '私設防火水槽', '私設消火栓', '海', '堀', '沈砂池']
+	const c = data.classified;
+	if (c.endsWith("消火栓")) return "img/icon_hydrant.png";
+	if (c.endsWith("防火水槽")) return "img/icon_hydrant2.png";
+	if (c.endsWith("プール")) return "img/icon_hydrant3.png";
+	return "img/icon_hydrant1.png";
+	/*
 	const ICONS = {
 		"http://odp.jig.jp/res/classified/消火栓": "img/icon_hydrant.png",
 		"http://odp.jig.jp/res/classified/防火水槽": "img/icon_hydrant2.png",
@@ -55,6 +63,7 @@ const getIconHydrant = function(data) {
 			return icon;
 	}
 	return "img/icon_hydrant.png";
+	*/
 };
 const icons = {
 	"http://purl.org/jrrk#Hydrant": { icon: "img/icon_hydrant.png", name: "消火栓", getIcon: getIconHydrant }
@@ -186,7 +195,9 @@ const fetchRefuge = async () => {
 		o.s = "http://linkdata.org/work/rdf1s9409i";
 		return o;
 	});
-	console.log(res);
+	const clss = ArrayUtil.toUnique(res.map(i => i.classified));
+	console.log(clss);
+	// ['公設消火栓', '公設防火水槽', '河川', 'その他', 'プール', '受水槽', '私設防火水槽', '私設消火栓', '海', '堀', '沈砂池']
 	return res;
 };
 
@@ -318,8 +329,8 @@ const getContent = function(data) {
 	if (data.plugs)
 		s.push("電源: " + data.plugs + "<br>");
 	s.push("MAP <a href='" + mapurl + "' target=_blank>" + pos[0] + "," + pos[1] + "</a><br>");
-//	if (data.classified)
-//		s.push("種別：" + decodeURIComponent(data.classified) + "<br>");
+	if (data.classified)
+		s.push("種別：" + decodeURIComponent(data.classified) + "<br>");
 	if (data.address)
 		s.push("住所：" + decodeURIComponent(data.address) + "<br>");
 	if (data.incharge)
