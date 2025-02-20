@@ -342,7 +342,7 @@ const getContent = function(data) {
 	if (data.note)
 		s.push("備考：" + decodeURIComponent(data.note) + "mm<br>");
 	if (data.s)
-		s.push("出展:" + "<a href='" + data.s + "' target=_blank>" + data.s + "</a><br>");
+		s.push("出典：" + "<a href='" + data.s + "' target=_blank>" + data.s + "</a><br>");
 //	s.push("DATA <a href='" + data.url + "' target=_blank>" + data.url + "</a><br>");
 //	debug(data.graph);
 	if (data.graph.startsWith("http://odp.jig.jp/rdf/jp/fukui/sabae/")) {
@@ -473,6 +473,7 @@ body {
 #data {
 	text-align: left;
 	word-wrap: break-word;
+  word-break: break-all;
 }
 #data #title {
 	font-size: 120%;
